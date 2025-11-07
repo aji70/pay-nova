@@ -71,7 +71,7 @@ export default function Home() {
     setLoading(true);
     try {
       const data = (await client.readContract({
-        address: '0x521EaE1102B65Dc3ab6ef938bfD55448eE5F3d69' as Address,
+        address: '0x640830C071e0A66F9C0e80AD8a2B7B67A0702578' as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [ref.trim()],

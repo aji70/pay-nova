@@ -117,9 +117,9 @@ contract PayNova {
             payable(recipient).transfer(amount);
             
             // Refund excess to sender
-            if (excess > 0) {
-                payable(msg.sender).transfer(excess);
-            }
+            // if (excess > 0) {
+            //     payable(msg.sender).transfer(excess);
+            // }
             // Ignore passed sentAmount for native
         } else {
             // ERC-20 token payment (supports excess refund like native)

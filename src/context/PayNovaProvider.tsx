@@ -11,7 +11,7 @@ import { Address, Hash } from 'viem';
 import PayNovaABI from './abi.json';
 
 const CONTRACT_ADDRESS =
-  '0x03Bcf8ef472AdD93e00E5AB0F1775CeC23A3F455' as Address;
+  '0x640830C071e0A66F9C0e80AD8a2B7B67A0702578' as Address;
 
 /* ----------------------- Types ----------------------- */
 export type TxStatus = 0 | 1 | 2; // 0: Pending, 1: Paid, 2: Cancelled
