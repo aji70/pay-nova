@@ -27,7 +27,7 @@ const modal = createAppKit({
   adapters: [wagmiAdapter],
   projectId,
   networks: [arbitrum, sepolia, baseSepolia],
-  defaultNetwork: sepolia,
+  defaultNetwork: baseSepolia,
   metadata: metadata,
   features: {
     analytics: true // Optional - defaults to your Cloud configuration

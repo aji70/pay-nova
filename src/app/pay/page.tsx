@@ -74,7 +74,7 @@ export default function PayPage() {
     setLoading(true);
     try {
       const data = (await publicClient.readContract({
-        address: '0x640830C071e0A66F9C0e80AD8a2B7B67A0702578' as Address,
+        address: '0x06D3622F07D0c7F8aBAD02c95b4673E32746E378' as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [ref.trim()],

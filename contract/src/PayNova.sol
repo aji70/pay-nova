@@ -6,7 +6,11 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract PayNova {
     address public owner;
 
-    enum TxStatus { Pending, Paid, Cancelled }
+    enum TxStatus {
+        Pending,
+        Paid,
+        Cancelled
+    }
 
     struct Transaction {
         address from;
@@ -39,11 +43,7 @@ contract PayNova {
         uint256 refunded
     );
 
-    event TransactionCancelled(
-        address indexed from,
-        bytes32 indexed refHash,
-        uint256 timestamp
-    );
+    event TransactionCancelled(address indexed from, bytes32 indexed refHash, uint256 timestamp);
 
     constructor() {
         owner = msg.sender;
@@ -59,12 +59,10 @@ contract PayNova {
      * @param token Token address (address(0) for native).
      * @param ref String ref created by frontend (used to save/retrieve tx).
      */
-    function generateTransaction(
-        address recipient,
-        uint256 amount,
-        address token,
-        string memory ref
-    ) external returns (bytes32 refHash) {
+    function generateTransaction(address recipient, uint256 amount, address token, string memory ref)
+        external
+        returns (bytes32 refHash)
+    {
         require(recipient != address(0), "Invalid recipient");
         require(amount > 0, "Amount must be greater than 0");
         require(bytes(ref).length > 0, "ref is required");
@@ -100,45 +98,53 @@ contract PayNova {
      */
     function executePay(bytes32 refHash, uint256 sentAmount) external payable returns (uint256 refundedAmount) {
         Transaction storage txn = transactions[refHash];
-        // require(txn.from == msg.sender, "Only creator can execute");
         require(txn.status == TxStatus.Pending, "Invalid tx status");
-        
 
         uint256 amount = txn.amount;
         address token = txn.token;
         address recipient = txn.to;
 
         uint256 excess = 0;
+
         if (token == address(0)) {
-            // Native token payment
+            // Native token payment (Ether)
             uint256 actualSent = msg.value;
-            require(actualSent >= amount, "Insufficient native amount sent");
+            require(actualSent >= amount, "Insufficient ETH sent");
+
             excess = actualSent - amount;
-            payable(recipient).transfer(amount);
-            
-            // Refund excess to sender
-            // if (excess > 0) {
-            //     payable(msg.sender).transfer(excess);
-            // }
-            // Ignore passed sentAmount for native
+
+            // Send payment to recipient
+            (bool sentToRecipient,) = payable(recipient).call{value: msg.value}("");
+            require(sentToRecipient, "Transfer to recipient failed");
+
+            // Refund excess back to sender
+            if (excess > 0) {
+                (bool refunded,) = payable(msg.sender).call{value: excess}("");
+                require(refunded, "Refund failed");
+            }
         } else {
-            // ERC-20 token payment (supports excess refund like native)
+            // ERC-20 token payment
             require(sentAmount >= amount, "Sent amount must be >= payment amount for ERC-20");
             excess = sentAmount - amount;
+
             IERC20 erc = IERC20(token);
-            erc.transferFrom(msg.sender, address(this), sentAmount);
-            erc.transfer(recipient, amount);
-            
-            // Refund excess to sender
+
+            // Transfer tokens from sender to contract
+            require(erc.transferFrom(msg.sender, address(this), sentAmount), "Token transfer failed");
+
+            // Send tokens to recipient
+            require(erc.transfer(recipient, amount), "Token payment failed");
+
+            // Refund any excess tokens
             if (excess > 0) {
-                erc.transfer(msg.sender, excess);
+                require(erc.transfer(msg.sender, excess), "Token refund failed");
             }
         }
 
-        // Update to paid
+        // Update transaction state
         txn.status = TxStatus.Paid;
         txn.refunded = excess;
-        txn.timestamp = block.timestamp; // Update timestamp to execution time
+        txn.timestamp = block.timestamp;
 
         emit Receipt(msg.sender, recipient, refHash, amount, token, block.timestamp, excess);
         return excess;
@@ -171,9 +177,7 @@ contract PayNova {
     }
 
     // Fallback to accept native tokens if sent directly (optional, for safety)
-    receive() external payable {
-        // revert("Use generateTransaction() + executePay() for payments");
-    }
+    receive() external payable {}
 
     // Owner-only: Emergency withdraw (if needed for fees or stuck funds)
     function withdraw(address token, uint256 amount) external {
@@ -189,6 +193,4 @@ contract PayNova {
         require(msg.sender == owner, "only Owner");
         owner = newOwner;
     }
-
-
 }
