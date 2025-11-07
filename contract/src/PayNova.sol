@@ -172,7 +172,7 @@ contract PayNova {
 
     // Fallback to accept native tokens if sent directly (optional, for safety)
     receive() external payable {
-        revert("Use generateTransaction() + executePay() for payments");
+        // revert("Use generateTransaction() + executePay() for payments");
     }
 
     // Owner-only: Emergency withdraw (if needed for fees or stuck funds)
@@ -189,4 +189,6 @@ contract PayNova {
         require(msg.sender == owner, "only Owner");
         owner = newOwner;
     }
+
+
 }

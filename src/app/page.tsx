@@ -71,7 +71,7 @@ export default function Home() {
     setLoading(true);
     try {
       const data = (await client.readContract({
-        address: '0x1387C1cDaC62D23A4b198D834a6Ac3C50a9f3840' as Address,
+        address: '0x521EaE1102B65Dc3ab6ef938bfD55448eE5F3d69' as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [ref.trim()],
@@ -120,6 +120,7 @@ export default function Home() {
     console.log('tx amount:', tx.amount);
     console.log("Creator (from):", tx.from);
     console.log("Current wallet:", user);
+    console.log('To', tx.to)
 
     // Pass msg.value as bigint directly, not an object
     const hash = await payTransaction(
