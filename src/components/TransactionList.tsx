@@ -65,7 +65,7 @@ export default function TransactionList() {
     setLoading(true);
     try {
       const data = (await publicClient.readContract({
-        address: '0x8DE814f6b762113413E0304706C92AE5203df41b' as Address,
+        address: '0x1387C1cDaC62D23A4b198D834a6Ac3C50a9f3840' as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [ref.trim()],

@@ -102,7 +102,7 @@ contract PayNova {
         Transaction storage txn = transactions[refHash];
         // require(txn.from == msg.sender, "Only creator can execute");
         require(txn.status == TxStatus.Pending, "Invalid tx status");
-        require(txn.amount > 0, "Invalid transaction");
+        
 
         uint256 amount = txn.amount;
         address token = txn.token;
