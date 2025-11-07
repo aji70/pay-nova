@@ -33,7 +33,6 @@ export default async function RootLayout({
               </Link>
 
               <ul className="hidden md:flex items-center gap-6 text-white/90">
-                <li><Link href="/" className="hover:text-white transition">Home</Link></li>
                 <li><Link href="/generate" className="hover:text-white transition">Generate</Link></li>
                 <li><Link href="/pay" className="hover:text-white transition">Pay</Link></li>
                 <li><Link href="/receipts" className="hover:text-white transition">Receipts</Link></li>

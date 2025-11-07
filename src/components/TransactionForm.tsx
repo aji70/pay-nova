@@ -18,10 +18,15 @@ import {
   WalletIcon
 } from '@heroicons/react/24/outline';
 
+// Updated TOKEN_CONFIG with Base Sepolia (and others)
 const TOKEN_CONFIG: Record<
   string,
   Record<string, { address: Address; decimals: number }>
 > = {
+  'Base Sepolia': {
+    USDT: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address, decimals: 6 },
+    USDC: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address, decimals: 6 }, // Placeholder
+  },
   Ethereum: {
     USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' as Address, decimals: 6 },
     USDC: { address: '0xA0b86a33E641E66e2aD2d4fC5E9B6b8C9e5D8b4f' as Address, decimals: 6 },
@@ -51,8 +56,8 @@ export default function TransactionForm() {
   const [form, setForm] = useState({
     recipient: '',
     amount: '',
-    chain: 'Ethereum',
-    tokenType: 'USDT' as 'USDT' | 'USDC' | 'Custom',
+    chain: 'Base Sepolia', // Default chain
+    tokenType: 'Native' as 'Native' | 'USDT' | 'USDC' | 'Custom',
     tokenAddress: '',
   });
   const [loading, setLoading] = useState(false);
@@ -103,22 +108,33 @@ export default function TransactionForm() {
     const ref = generateRef();
     const isCustom = form.tokenType === 'Custom';
 
-    if (isCustom && form.tokenAddress && !/^0x[a-fA-F0-9]{40}$/.test(form.tokenAddress)) {
-      toast.error('Invalid token address');
-      setLoading(false);
-      return;
-    }
     if (!/^0x[a-fA-F0-9]{40}$/.test(form.recipient)) {
       toast.error('Invalid recipient address');
       setLoading(false);
       return;
     }
 
+    if (isCustom && form.tokenAddress && !/^0x[a-fA-F0-9]{40}$/.test(form.tokenAddress)) {
+      toast.error('Invalid token address');
+      setLoading(false);
+      return;
+    }
+
     let tokenAddr: Address = zeroAddress;
     let decimals = 18;
-    let tokenSymbol = 'Native';
+    let tokenSymbol = 'ETH';
 
-    if (isCustom) {
+    // Native token
+    if (form.tokenType === 'Native') {
+      tokenAddr = zeroAddress;
+      tokenSymbol = form.chain === 'Base Sepolia' ? 'ETH' :
+                   form.chain === 'Ethereum' ? 'ETH' :
+                   form.chain === 'BSC' ? 'BNB' :
+                   form.chain === 'Polygon' ? 'MATIC' :
+                   form.chain === 'Avalanche' ? 'AVAX' : 'ETH';
+    }
+    // Custom token
+    else if (isCustom) {
       tokenAddr = (form.tokenAddress || zeroAddress) as Address;
       if (tokenAddr !== zeroAddress) {
         try {
@@ -133,14 +149,10 @@ export default function TransactionForm() {
           decimals = 18;
           tokenSymbol = 'CUSTOM';
         }
-      } else {
-        tokenSymbol =
-          form.chain === 'Ethereum' ? 'ETH' :
-          form.chain === 'BSC' ? 'BNB' :
-          form.chain === 'Polygon' ? 'MATIC' :
-          form.chain === 'Avalanche' ? 'AVAX' : 'Native';
       }
-    } else {
+    }
+    // USDT / USDC
+    else {
       const cfg = TOKEN_CONFIG[form.chain]?.[form.tokenType];
       if (!cfg) {
         toast.error('Unsupported chain/token');
@@ -207,8 +219,12 @@ export default function TransactionForm() {
   };
 
   const handleTokenTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const v = e.target.value as 'USDT' | 'USDC' | 'Custom';
-    setForm({ ...form, tokenType: v, ...(v !== 'Custom' ? { tokenAddress: '' } : {}) });
+    const v = e.target.value as 'Native' | 'USDT' | 'USDC' | 'Custom';
+    setForm({ 
+      ...form, 
+      tokenType: v, 
+      ...(v !== 'Custom' ? { tokenAddress: '' } : {}) 
+    });
   };
 
   const formatAmount = (amt: bigint, dec: number) =>
@@ -233,6 +249,9 @@ export default function TransactionForm() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 py-8 px-4 sm:py-12 sm:px-6 lg:px-8 overflow-hidden">
+      {/* TOP SPACING BELOW NAVBAR */}
+      <div className="mt-6" />
+
       {/* Animated Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-blob"></div>
@@ -243,10 +262,6 @@ export default function TransactionForm() {
       <div className="relative max-w-4xl mx-auto">
         {/* Header */}
         <div className="text-center mb-10 sm:mb-14">
-          <div className="inline-flex items-center px-5 py-2.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 mb-6">
-            <span className="text-2xl">PayNova</span>
-            <h1 className="ml-3 text-2xl font-bold text-white">PayNova</h1>
-          </div>
           <h2 className="text-3xl sm:text-5xl font-bold text-white mb-4">Create & Pay Securely</h2>
           <p className="text-lg sm:text-xl text-purple-100 max-w-2xl mx-auto leading-relaxed">
             Generate a transaction first — review, then pay with zero mistakes.
@@ -277,9 +292,10 @@ export default function TransactionForm() {
               <select
                 value={form.chain}
                 onChange={(e) => setForm({ ...form, chain: e.target.value })}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm custom-select"
                 required
               >
+                <option value="Base Sepolia">Base Sepolia (ETH)</option>
                 <option value="Ethereum">Ethereum (ETH)</option>
                 <option value="BSC">BSC (BNB)</option>
                 <option value="Polygon">Polygon (MATIC)</option>
@@ -299,24 +315,27 @@ export default function TransactionForm() {
               <select
                 value={form.tokenType}
                 onChange={handleTokenTypeChange}
-                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+                className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm custom-select"
                 required
               >
+                <option value="Native">Native Token</option>
                 <option value="USDT">USDT</option>
                 <option value="USDC">USDC</option>
                 <option value="Custom">Custom Token</option>
               </select>
             </div>
 
+            {/* Custom Token Address – Only show if Custom */}
             {isCustom && (
               <div>
                 <label className="block text-sm font-semibold text-white mb-2">Token Address</label>
                 <input
                   type="text"
-                  placeholder="0x… (leave empty for native)"
+                  placeholder="0x…"
                   value={form.tokenAddress}
                   onChange={(e) => setForm({ ...form, tokenAddress: e.target.value })}
                   className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-purple-200 focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all text-sm"
+                  required
                 />
               </div>
             )}
@@ -354,7 +373,7 @@ export default function TransactionForm() {
               />
             </div>
 
-            {/* Action Buttons – Side by Side */}
+            {/* Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-3 pt-4">
               <button
                 type="submit"
@@ -386,7 +405,7 @@ export default function TransactionForm() {
         </div>
       </div>
 
-      {/* Receipt Modal (still included) */}
+      {/* Receipt Modal */}
       {showInvoice && invoice && (
         <div
           className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 print:hidden"
@@ -513,6 +532,7 @@ export default function TransactionForm() {
         </div>
       )}
 
+      {/* CUSTOM SELECT STYLES + ANIMATIONS */}
       <style jsx>{`
         @keyframes blob {
           0% { transform: translate(0px, 0px) scale(1); }
@@ -523,6 +543,26 @@ export default function TransactionForm() {
         .animate-blob { animation: blob 7s infinite; }
         .animation-delay-2000 { animation-delay: 2s; }
         .animation-delay-4000 { animation-delay: 4s; }
+
+        .custom-select {
+          appearance: none;
+          background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%228%22%20viewBox%3D%220%200%2012%208%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M0%2C0%20L12%2C0%20L6%2C8%20L0%2C0%22%2F%3E%3C%2Fsvg%3E");
+          background-repeat: no-repeat;
+          background-position: right 1rem center;
+          background-size: 12px;
+          padding-right: 3rem !important;
+        }
+
+        .custom-select option {
+          color: #1f2937;
+          background: #ffffff;
+          padding: 8px;
+        }
+
+        .custom-select option:checked {
+          background: #a78bfa;
+          color: white;
+        }
       `}</style>
     </div>
   );
