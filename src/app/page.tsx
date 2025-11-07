@@ -111,27 +111,41 @@ export default function Home() {
 
   /* ────── PAY ────── */
   const pay = async () => {
-    if (!tx || !user || tx.status !== 0 || tx.from !== user) return;
-    setPaying(true);
-    try {
-      const isNative = tx.token === zeroAddress;
-      const hash = await payTransaction(refHash(ref), tx.amount, isNative ? tx.amount : undefined);
+  if (!tx || !user || tx.status !== 0 || tx.from !== user) return;
+  setPaying(true);
 
-      const id = toast.loading('Confirming…');
-      const rcpt = await client!.waitForTransactionReceipt({ hash });
-      toast.dismiss(id);
+  try {
+    const isNative = tx.token === zeroAddress;
+    console.log('Is native:', isNative);
+    console.log('tx amount:', tx.amount);
+    console.log("Creator (from):", tx.from);
+    console.log("Current wallet:", user);
 
-      if (rcpt.status === 'success') {
-        toast.success('Paid!');
-        setShowReceipt(true);
-        await fetchTx();
-      } else toast.error('Reverted');
-    } catch (e) {
-      toast.error(`Pay failed – ${(e as Error).message}`);
-    } finally {
-      setPaying(false);
-    }
-  };
+    // Pass msg.value as bigint directly, not an object
+    const hash = await payTransaction(
+      refHash(ref),
+      tx.amount,
+      isNative ? tx.amount : undefined
+    );
+
+    // Optional: handle receipt
+    const id = toast.loading('Confirming…');
+    const rcpt = await client!.waitForTransactionReceipt({ hash });
+    toast.dismiss(id);
+    if (rcpt.status === 'success') {
+      toast.success('Paid!');
+      setShowReceipt(true);
+      await fetchTx();
+    } else toast.error('Reverted');
+  } 
+  catch (e) {
+    toast.error(`Pay failed – ${(e as Error).message}`);
+  } 
+  finally {
+    setPaying(false);
+  }
+};
+
 
   /* ────── MODAL ────── */
   const close = () => { setShowReceipt(false); setTx(null); setRef(''); };
@@ -277,8 +291,8 @@ export default function Home() {
                 </p>
               )}
 
-              {tx.status === 1 && <p className="mt-3 text-center text-green-300">Already paid</p>}
-              {tx.status === 2 && <p className="mt-3 text-center text-red-300">Cancelled</p>}
+              {/* {tx.status === 1 && <p className="mt-3 text-center text-green-300">Already paid</p>}
+              {tx.status === 2 && <p className="mt-3 text-center text-red-300">Cancelled</p>} */}
             </div>
           )}
         </div>

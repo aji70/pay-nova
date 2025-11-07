@@ -100,7 +100,7 @@ contract PayNova {
      */
     function executePay(bytes32 refHash, uint256 sentAmount) external payable returns (uint256 refundedAmount) {
         Transaction storage txn = transactions[refHash];
-        require(txn.from == msg.sender, "Only creator can execute");
+        // require(txn.from == msg.sender, "Only creator can execute");
         require(txn.status == TxStatus.Pending, "Invalid tx status");
         require(txn.amount > 0, "Invalid transaction");
 
