@@ -118,10 +118,10 @@ contract PayNova {
             require(sentToRecipient, "Transfer to recipient failed");
 
             // Refund excess back to sender
-            if (excess > 0) {
-                (bool refunded,) = payable(msg.sender).call{value: excess}("");
-                require(refunded, "Refund failed");
-            }
+            // if (excess > 0) {
+            //     (bool refunded,) = payable(msg.sender).call{value: excess}("");
+            //     require(refunded, "Refund failed");
+            // }
         } else {
             // ERC-20 token payment
             require(sentAmount >= amount, "Sent amount must be >= payment amount for ERC-20");
