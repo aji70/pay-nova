@@ -109,7 +109,7 @@ export default function TransactionForm() {
       if (!publicClient) return;
       try {
         const data = (await publicClient.readContract({
-          address: '0xF4075597b631fFb2Ea78f6C5BD9d248aB0eF9828' as Address,
+          address: '0xfea50f270763F34DD644fE241429f6e8494A680F' as Address,
           abi: PayNovaABI,
           functionName: 'getTransaction',
           args: [ref],
