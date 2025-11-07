@@ -9,18 +9,32 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@react-pdf/renderer": "^4.3.1",
+    "@reown/appkit": "^1.8.13",
+    "@reown/appkit-adapter-wagmi": "^1.8.13",
+    "@tanstack/react-query": "^5.90.6",
+    "lucide-react": "^0.553.0",
+    "next": "16.0.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "next": "16.0.1"
+    "react-hot-toast": "^2.6.0",
+    "uuid": "^13.0.0",
+    "viem": "^2.38.6",
+    "wagmi": "^2.19.2"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@tailwindcss/cli": "^4.1.16",
+    "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
+    "@types/uuid": "^10.0.0",
+    "autoprefixer": "^10.4.21",
     "eslint": "^9",
-    "eslint-config-next": "16.0.1"
+    "eslint-config-next": "16.0.1",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.16",
+    "typescript": "^5"
   }
 }
