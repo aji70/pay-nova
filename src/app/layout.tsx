@@ -5,6 +5,7 @@ import { headers } from 'next/headers'
 import './globals.css'
 import ContextProvider from '@/context'
 import { PayNovaContractProvider } from '@/context/PayNovaProvider'
+import NavbarBalances from '@/components/NavbarBalances'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -39,6 +40,10 @@ export default async function RootLayout({
               </ul>
 
               {/* Web3Modal button – stays right-aligned */}
+              
+              
+              
+              <NavbarBalances />
               <appkit-button />
             </nav>
 

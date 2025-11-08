@@ -6,6 +6,12 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 contract PayNova {
     address public owner;
 
+    struct Call {
+        address target;
+        bytes data;
+        uint256 value;
+    }
+
     enum TxStatus {
         Pending,
         Paid,
@@ -193,5 +199,15 @@ contract PayNova {
     function changeOwner(address newOwner) external {
         require(msg.sender == owner, "only Owner");
         owner = newOwner;
+    }
+
+    // Add this function to PayNova.sol
+    function multicall(Call[] calldata calls) external payable returns (bytes[] memory results) {
+        results = new bytes[](calls.length);
+        for (uint256 i = 0; i < calls.length; i++) {
+            (bool success, bytes memory result) = calls[i].target.call{value: calls[i].value}(calls[i].data);
+            require(success, "Multicall failed");
+            results[i] = result;
+        }
     }
 }

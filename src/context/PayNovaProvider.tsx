@@ -1,3 +1,4 @@
+// context/PayNovaProvider.tsx
 'use client';
 
 import { createContext, useContext, useCallback } from 'react';
@@ -7,14 +8,13 @@ import {
   useWaitForTransactionReceipt,
   usePublicClient,
 } from 'wagmi';
-import { Address, Hash } from 'viem';
+import { Address, Hash, encodeFunctionData } from 'viem';
 import PayNovaABI from './abi.json';
+import erc20Abi from './ercabi.json';
 
-const CONTRACT_ADDRESS =
-  process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address;
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address;
 
-/* ----------------------- Types ----------------------- */
-export type TxStatus = 0 | 1 | 2; // 0: Pending, 1: Paid, 2: Cancelled
+export type TxStatus = 0 | 1 | 2;
 
 type Transaction = {
   from: Address;
@@ -28,11 +28,7 @@ type Transaction = {
 
 type TransactionTuple = [Address, Address, bigint, Address, bigint, TxStatus, bigint];
 
-/* ----------------------- Hooks ----------------------- */
-export function useGetTransaction(
-  ref?: string,
-  options = { enabled: true }
-) {
+export function useGetTransaction(ref?: string, options = { enabled: true }) {
   const result = useReadContract({
     address: CONTRACT_ADDRESS,
     abi: PayNovaABI,
@@ -58,19 +54,13 @@ export function useGetTransaction(
   };
 }
 
-/* generateTransaction – unchanged */
 export function useGenerateTransaction(
   recipient: Address,
   amount: bigint,
   token: Address,
   ref: string
 ) {
-  const {
-    writeContractAsync,
-    isPending,
-    error,
-    data: txHash,
-  } = useWriteContract();
+  const { writeContractAsync, isPending, error, data: txHash } = useWriteContract();
   const { isSuccess } = useWaitForTransactionReceipt({ hash: txHash as Hash });
 
   const write = useCallback(async (): Promise<Hash> => {
@@ -80,26 +70,15 @@ export function useGenerateTransaction(
       functionName: 'generateTransaction',
       args: [recipient, amount, token, ref],
     });
-
-    if (!result) throw new Error('Invalid refHash returned from contract');
+    if (!result) throw new Error('Invalid refHash returned');
     return result as Hash;
   }, [writeContractAsync, recipient, amount, token, ref]);
 
   return { write, isPending, error, txHash, isSuccess };
 }
 
-/* executePay – unchanged (kept for internal use) */
-export function useExecutePay(
-  ref: string,
-  sentAmount: bigint,
-  value?: bigint
-) {
-  const {
-    writeContractAsync,
-    isPending,
-    error,
-    data: txHash,
-  } = useWriteContract();
+export function useExecutePay(ref: string, sentAmount: bigint, value?: bigint) {
+  const { writeContractAsync, isPending, error, data: txHash } = useWriteContract();
   const { isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   const write = useCallback(async (): Promise<Hash> => {
@@ -110,22 +89,15 @@ export function useExecutePay(
       args: [ref, sentAmount],
       value,
     });
-
-    if (!result) throw new Error('Invalid txHash returned from contract');
+    if (!result) throw new Error('Invalid txHash returned');
     return result as Hash;
   }, [writeContractAsync, ref, sentAmount, value]);
 
   return { write, isPending, error, txHash, isSuccess };
 }
 
-/* cancelTransaction – unchanged */
 export function useCancelTransaction(refHash: Hash) {
-  const {
-    writeContractAsync,
-    isPending,
-    error,
-    data: txHash,
-  } = useWriteContract();
+  const { writeContractAsync, isPending, error, data: txHash } = useWriteContract();
   const { isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   const write = useCallback(async (): Promise<Hash> => {
@@ -135,8 +107,7 @@ export function useCancelTransaction(refHash: Hash) {
       functionName: 'cancelTransaction',
       args: [refHash],
     });
-
-    if (!result) throw new Error('Invalid txHash returned from contract');
+    if (!result) throw new Error('Invalid txHash returned');
     return result as Hash;
   }, [writeContractAsync, refHash]);
 
@@ -151,8 +122,7 @@ type ContractContextType = {
     token: Address,
     ref: string
   ) => Promise<Hash>;
-  /** NEW – matches UI naming */
-  payTransaction: (refHash: string, sentAmount: bigint, value?: bigint) => Promise<Hash>;
+  payTransaction: (ref: string, amount: bigint, token: Address) => Promise<Hash>;
   cancelTransaction: (refHash: Hash) => Promise<Hash>;
 };
 
@@ -162,38 +132,58 @@ export const PayNovaContractProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
   const { writeContractAsync } = useWriteContract();
+  const client = usePublicClient();
 
   const generateTransaction = useCallback(
-    async (
-      recipient: Address,
-      amount: bigint,
-      token: Address,
-      ref: string
-    ): Promise<Hash> => {
+    async (recipient: Address, amount: bigint, token: Address, ref: string): Promise<Hash> => {
       const result = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: PayNovaABI,
         functionName: 'generateTransaction',
         args: [recipient, amount, token, ref],
       });
-      if (!result) throw new Error('Invalid refHash returned from contract');
+      if (!result) throw new Error('Invalid refHash returned');
       return result as Hash;
     },
     [writeContractAsync]
   );
 
-  /** payTransaction – calls the contract’s executePay */
+  // NEW: payTransaction with approve + executePay in one multicall
   const payTransaction = useCallback(
-    async (ref: string, sentAmount: bigint, value?: bigint): Promise<Hash> => {
-      const result = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
+    async (ref: string, amount: bigint, token: Address): Promise<Hash> => {
+      if (token === '0x0000000000000000000000000000000000000000') {
+        // Native token
+        return await writeContractAsync({
+          address: CONTRACT_ADDRESS,
+          abi: PayNovaABI,
+          functionName: 'executePay',
+          args: [ref, amount],
+          value: amount,
+        });
+      }
+
+      // ERC-20: approve + executePay via multicall on token
+      const approveData = encodeFunctionData({
+        abi: erc20Abi,
+        functionName: 'approve',
+        args: [CONTRACT_ADDRESS, amount],
+      });
+
+      const payData = encodeFunctionData({
         abi: PayNovaABI,
         functionName: 'executePay',
-        args: [ref, sentAmount],
-        value,
+        args: [ref, amount],
       });
-      if (!result) throw new Error('Invalid txHash returned from contract');
-      return result as Hash;
+
+      return await writeContractAsync({
+        address: token,
+        abi: erc20Abi,
+        functionName: 'multicall',
+        args: [[
+          { to: token, data: approveData, value: 0n },
+          { to: CONTRACT_ADDRESS, data: payData, value: 0n },
+        ]],
+      });
     },
     [writeContractAsync]
   );
@@ -206,7 +196,7 @@ export const PayNovaContractProvider: React.FC<{
         functionName: 'cancelTransaction',
         args: [refHash],
       });
-      if (!result) throw new Error('Invalid txHash returned from contract');
+      if (!result) throw new Error('Invalid txHash returned');
       return result as Hash;
     },
     [writeContractAsync]
@@ -224,8 +214,6 @@ export const PayNovaContractProvider: React.FC<{
 export const usePayNovaContract = () => {
   const context = useContext(PayNovaContext);
   if (!context)
-    throw new Error(
-      'usePayNovaContract must be used within a PayNovaContractProvider'
-    );
+    throw new Error('usePayNovaContract must be used within PayNovaContractProvider');
   return context;
 };

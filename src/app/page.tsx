@@ -2,13 +2,14 @@
 
 import { useState, useCallback } from 'react';
 import { usePayNovaContract } from '@/context/PayNovaProvider';
-import { useAccount, usePublicClient } from 'wagmi';
+import {
+  useAccount,
+  usePublicClient,
+  useWaitForTransactionReceipt,
+} from 'wagmi';
 import {
   Address,
   zeroAddress,
-  keccak256,
-  encodeAbiParameters,
-  parseAbiParameters,
   formatUnits,
   parseUnits,
 } from 'viem';
@@ -53,8 +54,8 @@ const TOKEN_CONFIG: Record<string, Record<string, { address: Address; decimals: 
     USDC: { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' as Address, decimals: 18 },
   },
   'Base Sepolia': {
-    USDT: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address, decimals: 6 },
-    USDC: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address, decimals: 6 },
+    USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as Address, decimals: 6 },
+    USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as Address, decimals: 6 },
   },
 };
 
@@ -154,7 +155,7 @@ export default function Home() {
     setLoading(false);
   };
 
-  /* ────── PAY ────── */
+  /* ────── PAY (uses context with multicall) ────── */
   const pay = async (refId: string) => {
     if (!user || !client) return;
     setPaying(true);
@@ -166,20 +167,19 @@ export default function Home() {
       return;
     }
 
-    const isNative = result.data.token === zeroAddress;
+    // ---- TOAST FLOW (fixed) ----
+    const toastId = toast.loading('Preparing payment…');
 
     try {
-      const hash = await payTransaction(
-        refId,
-        result.data.amount,
-        isNative ? result.data.amount : undefined
-      );
+      const hash = await payTransaction(refId, result.data.amount, result.data.token);
 
-      const id = toast.loading('Confirming payment…');
-      const rcpt = await client.waitForTransactionReceipt({ hash });
-      toast.dismiss(id);
+      toast.dismiss(toastId);
+      const confirmToast = toast.loading('Confirming payment…');
 
-      if (rcpt.status === 'success') {
+      const receipt = await client.waitForTransactionReceipt({ hash });
+      toast.dismiss(confirmToast);
+
+      if (receipt.status === 'success') {
         toast.success('Paid successfully!');
         setShowRefModal(false);
         setShowReceipt(true);
@@ -192,8 +192,10 @@ export default function Home() {
       } else {
         toast.error('Payment reverted');
       }
-    } catch (e) {
-      toast.error(`Pay failed – ${(e as Error).message}`);
+    } catch (err) {
+      toast.dismiss(toastId);
+      const e = err as { shortMessage?: string; message?: string };
+      toast.error(e.shortMessage || e.message || 'Payment failed');
     } finally {
       setPaying(false);
     }
@@ -240,12 +242,15 @@ export default function Home() {
     const refId = generateId();
     const amount = parseUnits(genForm.amount, dec);
 
+    const toastId = toast.loading('Creating transaction…');
     try {
       setLoading(true);
       const hash = await generateTransaction(genForm.recipient as Address, amount, tokenAddr, refId);
-      const toastId = toast.loading('Confirming on-chain...');
-      const receipt = await client.waitForTransactionReceipt({ hash });
       toast.dismiss(toastId);
+      const confirmToast = toast.loading('Confirming on-chain…');
+
+      const receipt = await client.waitForTransactionReceipt({ hash });
+      toast.dismiss(confirmToast);
 
       if (receipt.status === 'success') {
         toast.success('Transaction generated!');
@@ -259,7 +264,9 @@ export default function Home() {
         toast.error('Transaction reverted');
       }
     } catch (err) {
-      toast.error(`Generate failed: ${(err as Error).message}`);
+      toast.dismiss(toastId);
+      const e = err as Error;
+      toast.error(`Generate failed: ${e.message}`);
     } finally {
       setLoading(false);
     }
@@ -604,7 +611,7 @@ export default function Home() {
                 <button onClick={() => setShowReceipt(false)} className="text-3xl font-bold text-gray-400 print:hidden">×</button>
               </div>
 
-              <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white shadow-sm print:border-2 print:border-black">
+              <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white shadow-sm print:border-2 print:print-border-black">
                 <div className="border-b border-gray-200 bg-white px-6 py-4">
                   <h4 className="text-lg font-semibold text-gray-900">Payment Details</h4>
                 </div>
