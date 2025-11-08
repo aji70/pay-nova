@@ -109,7 +109,7 @@ export default function TransactionForm() {
       if (!publicClient) return null;
       try {
         return (await publicClient.readContract({
-          address: '0x255fa702cD54462fa664842bc8D66A3c0528AC8b' as Address,
+          address: process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address,
           abi: PayNovaABI,
           functionName: 'getTransaction',
           args: [ref],

@@ -107,7 +107,7 @@ export default function Home() {
     if (!refId.trim() || !client) return null;
     try {
       const data = (await client.readContract({
-        address: '0x255fa702cD54462fa664842bc8D66A3c0528AC8b' as Address,
+        address: process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [refId.trim()],
