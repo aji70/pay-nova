@@ -150,9 +150,9 @@
 	{
 		"inputs": [
 			{
-				"internalType": "bytes32",
-				"name": "refHash",
-				"type": "bytes32"
+				"internalType": "string",
+				"name": "ref",
+				"type": "string"
 			},
 			{
 				"internalType": "uint256",

@@ -74,7 +74,7 @@ export default function PayPage() {
     setLoading(true);
     try {
       const data = (await publicClient.readContract({
-        address: '0xfea50f270763F34DD644fE241429f6e8494A680F' as Address,
+        address: '0x255fa702cD54462fa664842bc8D66A3c0528AC8b' as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [ref.trim()],
@@ -135,24 +135,22 @@ export default function PayPage() {
 
     setPaying(true);
     try {
-      const refHash = getRefHash(ref);
-      console.log('ref hash', refHash)
       const isNative = transaction.token === zeroAddress;
       const value = isNative ? transaction.amount : undefined;
 
-      // const hash = await payTransaction(refHash, transaction.amount, value);
+      const hash = await payTransaction(ref, transaction.amount, value);
 
-      // const toastId = toast.loading('Waiting for confirmation...');
-      // const receipt = await publicClient!.waitForTransactionReceipt({ hash });
-      // toast.dismiss(toastId);
+      const toastId = toast.loading('Waiting for confirmation...');
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
+      toast.dismiss(toastId);
 
-      // if (receipt.status === 'success') {
-      //   toast.success('Payment successful!');
-      //   setShowReceipt(true);
-      //   await fetchTransaction();
-      // } else {
-      //   toast.error('Transaction reverted');
-      // }
+      if (receipt.status === 'success') {
+        toast.success('Payment successful!');
+        setShowReceipt(true);
+        await fetchTransaction();
+      } else {
+        toast.error('Transaction reverted');
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Unknown';
       toast.error(`Payment failed: ${msg}`);

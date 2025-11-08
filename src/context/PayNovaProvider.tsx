@@ -11,7 +11,7 @@ import { Address, Hash } from 'viem';
 import PayNovaABI from './abi.json';
 
 const CONTRACT_ADDRESS =
-  '0xfea50f270763F34DD644fE241429f6e8494A680F' as Address;
+  '0x255fa702cD54462fa664842bc8D66A3c0528AC8b' as Address;
 
 /* ----------------------- Types ----------------------- */
 export type TxStatus = 0 | 1 | 2; // 0: Pending, 1: Paid, 2: Cancelled
@@ -90,7 +90,7 @@ export function useGenerateTransaction(
 
 /* executePay – unchanged (kept for internal use) */
 export function useExecutePay(
-  refHash: Hash,
+  ref: string,
   sentAmount: bigint,
   value?: bigint
 ) {
@@ -107,13 +107,13 @@ export function useExecutePay(
       address: CONTRACT_ADDRESS,
       abi: PayNovaABI,
       functionName: 'executePay',
-      args: [refHash, sentAmount],
+      args: [ref, sentAmount],
       value,
     });
 
     if (!result) throw new Error('Invalid txHash returned from contract');
     return result as Hash;
-  }, [writeContractAsync, refHash, sentAmount, value]);
+  }, [writeContractAsync, ref, sentAmount, value]);
 
   return { write, isPending, error, txHash, isSuccess };
 }
@@ -152,7 +152,7 @@ type ContractContextType = {
     ref: string
   ) => Promise<Hash>;
   /** NEW – matches UI naming */
-  payTransaction: (refHash: Hash, sentAmount: bigint, value?: bigint) => Promise<Hash>;
+  payTransaction: (refHash: string, sentAmount: bigint, value?: bigint) => Promise<Hash>;
   cancelTransaction: (refHash: Hash) => Promise<Hash>;
 };
 
@@ -184,12 +184,12 @@ export const PayNovaContractProvider: React.FC<{
 
   /** payTransaction – calls the contract’s executePay */
   const payTransaction = useCallback(
-    async (refHash: Hash, sentAmount: bigint, value?: bigint): Promise<Hash> => {
+    async (ref: string, sentAmount: bigint, value?: bigint): Promise<Hash> => {
       const result = await writeContractAsync({
         address: CONTRACT_ADDRESS,
         abi: PayNovaABI,
         functionName: 'executePay',
-        args: [refHash, sentAmount],
+        args: [ref, sentAmount],
         value,
       });
       if (!result) throw new Error('Invalid txHash returned from contract');

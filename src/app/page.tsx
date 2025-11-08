@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import Link from 'next/link';
 import { usePayNovaContract } from '@/context/PayNovaProvider';
 import { useAccount, usePublicClient } from 'wagmi';
 import {
@@ -11,6 +10,7 @@ import {
   encodeAbiParameters,
   parseAbiParameters,
   formatUnits,
+  parseUnits,
 } from 'viem';
 import PayNovaABI from '@/context/abi.json';
 import toast from 'react-hot-toast';
@@ -23,6 +23,7 @@ import {
   CheckCircleIcon,
   XMarkIcon,
   CurrencyDollarIcon,
+  DocumentDuplicateIcon,
 } from '@heroicons/react/24/outline';
 
 const ERC20_MINIMAL_ABI = [
@@ -40,6 +41,23 @@ type Transaction = {
   refunded: bigint;
 };
 
+type TokenType = 'Native' | 'USDT' | 'USDC' | 'Custom';
+
+const TOKEN_CONFIG: Record<string, Record<string, { address: Address; decimals: number }>> = {
+  Ethereum: {
+    USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' as Address, decimals: 6 },
+    USDC: { address: '0xA0b86a33E641E66e2aD2d4fC5E9B6b8C9e5D8b4f' as Address, decimals: 6 },
+  },
+  BSC: {
+    USDT: { address: '0x55d398326f99059fF775485246999027B3197955' as Address, decimals: 18 },
+    USDC: { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' as Address, decimals: 18 },
+  },
+  'Base Sepolia': {
+    USDT: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address, decimals: 6 },
+    USDC: { address: '0x036CbD53842c5426634e7929541eC2318f3dCF7e' as Address, decimals: 6 },
+  },
+};
+
 export default function Home() {
   /* ────── STATE ────── */
   const [ref, setRef] = useState('');
@@ -50,31 +68,49 @@ export default function Home() {
   const [decimals, setDecimals] = useState(18);
   const [chain, setChain] = useState('');
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [showRefModal, setShowRefModal] = useState(false);
+  const [generatedRef, setGeneratedRef] = useState('');
+  const [generatedChain, setGeneratedChain] = useState('');
+  const [generatedSymbol, setGeneratedSymbol] = useState('');
+  const [generatedDecimals, setGeneratedDecimals] = useState(18);
+
+  // Generate form state
+  const [genForm, setGenForm] = useState({
+    recipient: '',
+    amount: '',
+    chain: 'Base Sepolia' as string,
+    tokenType: 'Native' as TokenType,
+    tokenAddress: '',
+  });
 
   const { address: user } = useAccount();
-  const { payTransaction } = usePayNovaContract();
+  const { generateTransaction, payTransaction } = usePayNovaContract();
   const client = usePublicClient();
 
   const CHAIN_MAP: Record<number, string> = {
     1: 'Ethereum', 56: 'BSC', 137: 'Polygon', 42161: 'Arbitrum',
-    8453: 'Base', 43114: 'Avalanche', 10: 'Optimism',
+    8453: 'Base', 43114: 'Avalanche', 10: 'Optimism', 84532: 'Base Sepolia',
   };
 
   /* ────── HELPERS ────── */
-  const refHash = (s: string) => keccak256(encodeAbiParameters(parseAbiParameters('string'), [s.trim()]));
-
+  const generateId = () => `ref_${Math.random().toString(36).substr(2, 9)}`;
   const fmt = (amt: bigint, dec: number) => amt === 0n ? '0' : parseFloat(formatUnits(amt, dec)).toString();
 
   /* ────── FETCH TX ────── */
-  const fetchTx = useCallback(async () => {
-    if (!ref.trim() || !client) return;
-    setLoading(true);
+  const fetchTx = useCallback(async (refId: string): Promise<{
+    data: Transaction;
+    sym: string;
+    dec: number;
+    chainName: string;
+  } | null> => {
+    if (!refId.trim() || !client) return null;
     try {
       const data = (await client.readContract({
-        address: '0xfea50f270763F34DD644fE241429f6e8494A680F' as Address,
+        address: '0x255fa702cD54462fa664842bc8D66A3c0528AC8b' as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
-        args: [ref.trim()],
+        args: [refId.trim()],
       })) as Transaction;
 
       const chainId = await client.getChainId();
@@ -90,67 +126,160 @@ export default function Home() {
           dec = d; sym = s || 'TOKEN';
         } catch { sym = 'CUSTOM'; }
       } else {
-        sym = chainName === 'Ethereum' ? 'ETH'
+        sym = ['Ethereum', 'Base', 'Base Sepolia', 'Arbitrum', 'Optimism'].includes(chainName) ? 'ETH'
           : chainName === 'BSC' ? 'BNB'
           : chainName === 'Polygon' ? 'MATIC'
           : chainName === 'Avalanche' ? 'AVAX'
           : 'Native';
       }
 
-      setTx(data);
-      setSymbol(sym);
-      setDecimals(dec);
-      setChain(chainName);
-    } catch (e) {
-      toast.error(`Not found – ${(e as Error).message}`);
+      return { data, sym, dec, chainName };
+    } catch {
+      return null;
+    }
+  }, [client]);
+
+  const loadTx = async () => {
+    setLoading(true);
+    const result = await fetchTx(ref);
+    if (result) {
+      setTx(result.data);
+      setSymbol(result.sym);
+      setDecimals(result.dec);
+      setChain(result.chainName);
+    } else {
+      toast.error('Transaction not found');
       setTx(null);
+    }
+    setLoading(false);
+  };
+
+  /* ────── PAY ────── */
+  const pay = async (refId: string) => {
+    if (!user || !client) return;
+    setPaying(true);
+
+    const result = await fetchTx(refId);
+    if (!result || result.data.status !== 0 || result.data.from !== user) {
+      toast.error('Cannot pay: invalid, already paid, or not your transaction');
+      setPaying(false);
+      return;
+    }
+
+    const isNative = result.data.token === zeroAddress;
+
+    try {
+      const hash = await payTransaction(
+        refId,
+        result.data.amount,
+        isNative ? result.data.amount : undefined
+      );
+
+      const id = toast.loading('Confirming payment…');
+      const rcpt = await client.waitForTransactionReceipt({ hash });
+      toast.dismiss(id);
+
+      if (rcpt.status === 'success') {
+        toast.success('Paid successfully!');
+        setShowRefModal(false);
+        setShowReceipt(true);
+        const updated = await fetchTx(refId);
+        if (updated) {
+          setTx(updated.data);
+          setSymbol(updated.sym);
+          setDecimals(updated.dec);
+        }
+      } else {
+        toast.error('Payment reverted');
+      }
+    } catch (e) {
+      toast.error(`Pay failed – ${(e as Error).message}`);
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  /* ────── GENERATE TRANSACTION ────── */
+  const handleGenerate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !client) return toast.error('Wallet not connected');
+
+    const isCustom = genForm.tokenType === 'Custom';
+    if (!/^0x[a-fA-F0-9]{40}$/.test(genForm.recipient)) return toast.error('Invalid recipient');
+    if (isCustom && genForm.tokenAddress && !/^0x[a-fA-F0-9]{40}$/.test(genForm.tokenAddress)) return toast.error('Invalid token address');
+
+    let tokenAddr: Address = zeroAddress;
+    let dec = 18;
+    let sym = 'ETH';
+
+    if (genForm.tokenType === 'Native') {
+      sym = ['Ethereum', 'Base', 'Base Sepolia', 'Arbitrum', 'Optimism'].includes(genForm.chain) ? 'ETH'
+        : genForm.chain === 'BSC' ? 'BNB'
+        : genForm.chain === 'Polygon' ? 'MATIC'
+        : genForm.chain === 'Avalanche' ? 'AVAX'
+        : 'ETH';
+    } else if (isCustom && genForm.tokenAddress) {
+      tokenAddr = genForm.tokenAddress as Address;
+      try {
+        const [d, s] = await Promise.all([
+          client.readContract({ address: tokenAddr, abi: ERC20_MINIMAL_ABI, functionName: 'decimals' }) as Promise<number>,
+          client.readContract({ address: tokenAddr, abi: ERC20_MINIMAL_ABI, functionName: 'symbol' }) as Promise<string>,
+        ]);
+        dec = d; sym = s || 'CUSTOM';
+      } catch {
+        sym = 'CUSTOM';
+      }
+    } else {
+      const cfg = TOKEN_CONFIG[genForm.chain]?.[genForm.tokenType];
+      if (!cfg) return toast.error('Unsupported chain/token');
+      tokenAddr = cfg.address;
+      dec = cfg.decimals;
+      sym = genForm.tokenType;
+    }
+
+    const refId = generateId();
+    const amount = parseUnits(genForm.amount, dec);
+
+    try {
+      setLoading(true);
+      const hash = await generateTransaction(genForm.recipient as Address, amount, tokenAddr, refId);
+      const toastId = toast.loading('Confirming on-chain...');
+      const receipt = await client.waitForTransactionReceipt({ hash });
+      toast.dismiss(toastId);
+
+      if (receipt.status === 'success') {
+        toast.success('Transaction generated!');
+        setGeneratedRef(refId);
+        setGeneratedChain(genForm.chain);
+        setGeneratedSymbol(sym);
+        setGeneratedDecimals(dec);
+        setShowGenerateModal(false);
+        setShowRefModal(true);
+      } else {
+        toast.error('Transaction reverted');
+      }
+    } catch (err) {
+      toast.error(`Generate failed: ${(err as Error).message}`);
     } finally {
       setLoading(false);
     }
-  }, [ref, client]);
+  };
 
-  /* ────── PAY ────── */
-  const pay = async () => {
-  if (!tx || !user || tx.status !== 0 || tx.from !== user) return;
-  setPaying(true);
+  /* ────── TOKEN TYPE CHANGE (Type-Safe) ────── */
+  const handleTokenTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as TokenType;
+    setGenForm({
+      ...genForm,
+      tokenType: value,
+      tokenAddress: value === 'Custom' ? genForm.tokenAddress : '',
+    });
+  };
 
-  try {
-    const isNative = tx.token === zeroAddress;
-    console.log('Is native:', isNative);
-    console.log('tx amount:', tx.amount);
-    console.log("Creator (from):", tx.from);
-    console.log("Current wallet:", user);
-    console.log('To', tx.to)
-
-    // Pass msg.value as bigint directly, not an object
-    const hash = await payTransaction(
-      refHash(ref),
-      tx.amount,
-      isNative ? tx.amount : undefined
-    );
-
-    // Optional: handle receipt
-    const id = toast.loading('Confirming…');
-    const rcpt = await client!.waitForTransactionReceipt({ hash });
-    toast.dismiss(id);
-    if (rcpt.status === 'success') {
-      toast.success('Paid!');
-      setShowReceipt(true);
-      await fetchTx();
-    } else toast.error('Reverted');
-  } 
-  catch (e) {
-    toast.error(`Pay failed – ${(e as Error).message}`);
-  } 
-  finally {
-    setPaying(false);
-  }
-};
-
-
-  /* ────── MODAL ────── */
-  const close = () => { setShowReceipt(false); setTx(null); setRef(''); };
-  const print = () => window.print();
+  /* ────── COPY REF ────── */
+  const copyRef = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success('Copied to clipboard!');
+  };
 
   /* ────── RENDER ────── */
   return (
@@ -173,13 +302,13 @@ export default function Home() {
         </p>
 
         {/* CTA – Generate */}
-        <Link
-          href="/generate"
+        <button
+          onClick={() => setShowGenerateModal(true)}
           className="mb-12 flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 font-bold text-white shadow-lg transition hover:scale-105"
         >
           <QrCodeIcon className="h-6 w-6" />
           Generate New Transaction
-        </Link>
+        </button>
 
         {/* Search Card */}
         <div className="w-full max-w-2xl rounded-2xl bg-white/10 p-6 backdrop-blur-xl shadow-2xl border border-white/20">
@@ -198,13 +327,13 @@ export default function Home() {
           <div className="flex flex-col gap-3 sm:flex-row">
             <input
               type="text"
-              placeholder="Reference (e.g. abc123)"
+              placeholder="Reference (e.g. ref_abc123)"
               value={ref}
               onChange={e => setRef(e.target.value)}
               className="flex-1 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white placeholder-purple-200 focus:border-transparent focus:ring-2 focus:ring-purple-500"
             />
             <button
-              onClick={fetchTx}
+              onClick={loadTx}
               disabled={loading || !ref.trim()}
               className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-3 font-bold text-white shadow-lg transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -268,7 +397,7 @@ export default function Home() {
               {/* Pay button */}
               {tx.status === 0 && tx.from === user && (
                 <button
-                  onClick={pay}
+                  onClick={() => pay(ref)}
                   disabled={paying}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-3 font-bold text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
                 >
@@ -291,23 +420,170 @@ export default function Home() {
                   Only the original sender can pay.
                 </p>
               )}
-
-              {/* {tx.status === 1 && <p className="mt-3 text-center text-green-300">Already paid</p>}
-              {tx.status === 2 && <p className="mt-3 text-center text-red-300">Cancelled</p>} */}
             </div>
           )}
         </div>
       </section>
 
-      {/* ---------- RECEIPT MODAL ---------- */}
+      {/* ────── GENERATE MODAL ────── */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowGenerateModal(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="text-xl font-bold text-gray-900">Generate Transaction</h3>
+              <button onClick={() => setShowGenerateModal(false)} className="text-gray-400 hover:text-gray-600">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleGenerate} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Chain</label>
+                <select
+                  value={genForm.chain}
+                  onChange={e => setGenForm({ ...genForm, chain: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="Base Sepolia">Base Sepolia</option>
+                  <option value="Ethereum">Ethereum</option>
+                  <option value="BSC">BSC</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Token</label>
+                <select
+                  value={genForm.tokenType}
+                  onChange={handleTokenTypeChange}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="Native">Native Token</option>
+                  <option value="USDT">USDT</option>
+                  <option value="USDC">USDC</option>
+                  <option value="Custom">Custom Token</option>
+                </select>
+              </div>
+
+              {genForm.tokenType === 'Custom' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Token Address</label>
+                  <input
+                    type="text"
+                    placeholder="0x..."
+                    value={genForm.tokenAddress}
+                    onChange={e => setGenForm({ ...genForm, tokenAddress: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    required
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Recipient</label>
+                <input
+                  type="text"
+                  placeholder="0x..."
+                  value={genForm.recipient}
+                  onChange={e => setGenForm({ ...genForm, recipient: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Amount</label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="0.00"
+                  value={genForm.amount}
+                  onChange={e => setGenForm({ ...genForm, amount: e.target.value })}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  required
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 py-3 font-bold text-white shadow-md transition hover:scale-[1.02] disabled:opacity-70"
+              >
+                {loading ? (
+                  <>
+                    <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-white" />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    Generate Transaction
+                    <ArrowRightIcon className="h-5 w-5" />
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ────── REF MODAL (after generate) ────── */}
+      {showRefModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && setShowRefModal(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h3 className="flex items-center gap-2 text-xl font-bold text-gray-900">
+                <CheckCircleIcon className="h-7 w-7 text-green-500" />
+                Ready to Pay
+              </h3>
+              <button onClick={() => setShowRefModal(false)} className="text-gray-400 hover:text-gray-600">
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="mb-4 rounded-xl bg-gradient-to-r from-purple-50 to-blue-50 p-4 border border-purple-200">
+              <p className="text-sm text-gray-700 mb-2">Reference ID</p>
+              <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2 border">
+                <code className="font-mono text-sm text-gray-800 truncate">{generatedRef}</code>
+                <button onClick={() => copyRef(generatedRef)} className="ml-2 p-2 text-purple-600 hover:bg-purple-100 rounded-lg transition">
+                  <DocumentDuplicateIcon className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1 text-sm text-gray-600">
+              <p><strong>Amount:</strong> {genForm.amount} {generatedSymbol}</p>
+              <p><strong>Chain:</strong> {generatedChain}</p>
+            </div>
+
+            <button
+              onClick={() => pay(generatedRef)}
+              disabled={paying}
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-3 font-bold text-white shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all disabled:opacity-70"
+            >
+              {paying ? (
+                <>
+                  <div className="h-5 w-5 animate-spin rounded-full border-b-2 border-white" />
+                  Paying...
+                </>
+              ) : (
+                <>
+                  <WalletIcon className="h-5 w-5" />
+                  Pay Now
+                </>
+              )}
+            </button>
+
+            <p className="mt-3 text-center text-xs text-gray-500">
+              Share this ref to let others pay later
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ────── RECEIPT MODAL ────── */}
       {showReceipt && tx && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm print:hidden"
-          onClick={e => e.target === e.currentTarget && close()}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm print:hidden" onClick={e => e.target === e.currentTarget && setShowReceipt(false)}>
           <div className="max-w-2xl w-full overflow-y-auto rounded-3xl bg-white shadow-2xl print:max-w-none print:rounded-none print:shadow-none print:border-0">
             <div className="space-y-6 p-8 print:p-12">
-              {/* Print-only header */}
               <div className="hidden border-b-2 border-gray-900 pb-8 text-center print:block">
                 <h1 className="text-6xl font-bold text-gray-900">PayNova</h1>
                 <p className="mt-4 text-4xl font-semibold text-gray-700">Payment Receipt</p>
@@ -325,7 +601,7 @@ export default function Home() {
                     <p className="text-gray-600">Completed on-chain</p>
                   </div>
                 </div>
-                <button onClick={close} className="text-3xl font-bold text-gray-400 print:hidden">×</button>
+                <button onClick={() => setShowReceipt(false)} className="text-3xl font-bold text-gray-400 print:hidden">×</button>
               </div>
 
               <div className="rounded-2xl border border-gray-200 bg-gradient-to-br from-gray-50 to-white shadow-sm print:border-2 print:border-black">
@@ -371,14 +647,14 @@ export default function Home() {
 
               <div className="flex flex-col gap-4 pt-4 sm:flex-row print:hidden">
                 <button
-                  onClick={close}
+                  onClick={() => { setShowReceipt(false); setTx(null); setRef(''); }}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gray-100 py-3 font-semibold text-gray-700 hover:bg-gray-200"
                 >
                   <XMarkIcon className="h-5 w-5" />
                   Close
                 </button>
                 <button
-                  onClick={print}
+                  onClick={() => window.print()}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-3 font-semibold text-white hover:from-green-700 hover:to-emerald-700"
                 >
                   Print Receipt

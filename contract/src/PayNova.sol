@@ -89,14 +89,15 @@ contract PayNova {
 
     /**
      * @dev Executes payment for a previously generated transaction.
-     * - Must match sender, refHash, and status=Pending.
+     * - Must match sender, ref, and status=Pending.
      * - For native: msg.value >= amount; transfers exact 'amount' to recipient, refunds excess.
      * - For ERC-20: sentAmount >= amount (user approves sentAmount); pulls 'sentAmount', transfers 'amount' to recipient, refunds excess.
      * - Updates status to Paid; emits Receipt event.
-     * @param refHash The keccak256 hash of the reference.
+     * @param ref The reference.
      * @param sentAmount The amount sent/approved (== msg.value for native; pull amount for ERC-20). Must >= amount.
      */
-    function executePay(bytes32 refHash, uint256 sentAmount) external payable returns (uint256 refundedAmount) {
+    function executePay(string memory ref, uint256 sentAmount) external payable returns (uint256 refundedAmount) {
+        bytes32 refHash = keccak256(abi.encodePacked(ref));
         Transaction storage txn = transactions[refHash];
         require(txn.status == TxStatus.Pending, "Invalid tx status");
 
@@ -118,10 +119,10 @@ contract PayNova {
             require(sentToRecipient, "Transfer to recipient failed");
 
             // Refund excess back to sender
-            // if (excess > 0) {
-            //     (bool refunded,) = payable(msg.sender).call{value: excess}("");
-            //     require(refunded, "Refund failed");
-            // }
+            if (excess > 0) {
+                (bool refunded,) = payable(msg.sender).call{value: excess}("");
+                require(refunded, "Refund failed");
+            }
         } else {
             // ERC-20 token payment
             require(sentAmount >= amount, "Sent amount must be >= payment amount for ERC-20");
