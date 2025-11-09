@@ -34,7 +34,7 @@ export default function NavbarBalances() {
 
   // ✅ Format by dividing balance by 10^18
   const format = (val: bigint | undefined) =>
-    val ? parseFloat(formatUnits(val, 18)).toFixed(4) : '0.0000';
+    val ? parseFloat(formatUnits(val, 18)).toFixed(2) : '0.00';
 
   const mint = async (tokenAddr: `0x${string}`, tokenName: string) => {
     if (!address) {
@@ -45,17 +45,11 @@ export default function NavbarBalances() {
     const toastId = toast.loading(`Minting 100 ${tokenName}…`);
 
     try {
-      const mintData = encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'mint',
-        args: [],
-      });
-
       await writeContractAsync({
         address: tokenAddr,
         abi: erc20Abi,
-        functionName: 'multicall',
-        args: [[{ to: tokenAddr, data: mintData, value: 0n }]],
+        functionName: 'mint',
+        args: [],
       });
 
       toast.dismiss(toastId);
