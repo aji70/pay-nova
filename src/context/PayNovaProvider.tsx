@@ -6,9 +6,8 @@ import {
   useReadContract,
   useWriteContract,
   useWaitForTransactionReceipt,
-  usePublicClient,
 } from 'wagmi';
-import { Address, Hash, encodeFunctionData } from 'viem';
+import { Address, Hash } from 'viem';
 import PayNovaABI from './abi.json';
 import erc20Abi from './ercabi.json';
 
@@ -16,15 +15,6 @@ const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address;
 
 export type TxStatus = 0 | 1 | 2;
 
-type Transaction = {
-  from: Address;
-  to: Address;
-  amount: bigint;
-  token: Address;
-  timestamp: bigint;
-  status: TxStatus;
-  refunded: bigint;
-};
 
 type TransactionTuple = [Address, Address, bigint, Address, bigint, TxStatus, bigint];
 
@@ -124,6 +114,7 @@ type ContractContextType = {
   ) => Promise<Hash>;
   payTransaction: (ref: string, amount: bigint, token: Address) => Promise<Hash>;
   cancelTransaction: (refHash: Hash) => Promise<Hash>;
+  approveTransaction: (amount: bigint, token: Address) => Promise<Hash> 
 };
 
 const PayNovaContext = createContext<ContractContextType | undefined>(undefined);
@@ -132,7 +123,6 @@ export const PayNovaContractProvider: React.FC<{
   children: React.ReactNode;
 }> = ({ children }) => {
   const { writeContractAsync } = useWriteContract();
-  const client = usePublicClient();
 
   const generateTransaction = useCallback(
     async (recipient: Address, amount: bigint, token: Address, ref: string): Promise<Hash> => {
@@ -161,29 +151,57 @@ export const PayNovaContractProvider: React.FC<{
           value: amount,
         });
       }
+      else{
+         return await writeContractAsync({
+          address: CONTRACT_ADDRESS,
+          abi: PayNovaABI,
+          functionName: 'executePay',
+          args: [ref, amount],
+        });
+      }
 
-      // ERC-20: approve + executePay via multicall on token
-      const approveData = encodeFunctionData({
-        abi: erc20Abi,
-        functionName: 'approve',
-        args: [CONTRACT_ADDRESS, amount],
-      });
+    },
+    [writeContractAsync]
+  );
 
-      const payData = encodeFunctionData({
-        abi: PayNovaABI,
-        functionName: 'executePay',
-        args: [ref, amount],
-      });
+  // const payERCTransaction = useCallback(
+  //   async (ref: string, amount: bigint, token: Address): Promise<Hash> => {
+  //     if (token === '0x0000000000000000000000000000000000000000') {
+  //       // Native token
+  //       return await writeContractAsync({
+  //         address: CONTRACT_ADDRESS,
+  //         abi: PayNovaABI,
+  //         functionName: 'executePay',
+  //         args: [ref, amount],
+  //         value: amount,
+  //       });
+  //     }
 
-      return await writeContractAsync({
-        address: token,
-        abi: erc20Abi,
-        functionName: 'multicall',
-        args: [[
-          { to: token, data: approveData, value: 0n },
-          { to: CONTRACT_ADDRESS, data: payData, value: 0n },
-        ]],
-      });
+ 
+      
+  //  return await writeContractAsync({
+  //         address: token,
+  //         abi: PayNovaABI,
+  //         functionName: 'executePay',
+  //         args: [ref, amount],
+  //       });
+
+  //   },
+  //   [writeContractAsync]
+  // );
+
+
+   const approveTransaction = useCallback(
+    async (amount: bigint, token: Address): Promise<Hash> => {    
+      
+ return await writeContractAsync({
+    address: token,
+    abi: erc20Abi,
+    functionName: 'approve',
+    args: [CONTRACT_ADDRESS, amount],
+  })
+
+
     },
     [writeContractAsync]
   );
@@ -204,7 +222,7 @@ export const PayNovaContractProvider: React.FC<{
 
   return (
     <PayNovaContext.Provider
-      value={{ generateTransaction, payTransaction, cancelTransaction }}
+      value={{ generateTransaction, payTransaction, cancelTransaction, approveTransaction }}
     >
       {children}
     </PayNovaContext.Provider>

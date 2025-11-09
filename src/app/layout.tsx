@@ -32,18 +32,7 @@ export default async function RootLayout({
               <Link href="/" className="text-2xl font-bold text-white tracking-wide">
                 PayNova
               </Link>
-
-              <ul className="hidden md:flex items-center gap-6 text-white/90">
-                <li><Link href="/generate" className="hover:text-white transition">Generate</Link></li>
-                <li><Link href="/pay" className="hover:text-white transition">Pay</Link></li>
-                <li><Link href="/receipts" className="hover:text-white transition">Receipts</Link></li>
-              </ul>
-
-              {/* Web3Modal button – stays right-aligned */}
-              
-              
-              
-              <NavbarBalances />
+             <NavbarBalances />
               <appkit-button />
             </nav>
 

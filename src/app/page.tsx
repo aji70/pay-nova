@@ -5,7 +5,6 @@ import { usePayNovaContract } from '@/context/PayNovaProvider';
 import {
   useAccount,
   usePublicClient,
-  useWaitForTransactionReceipt,
 } from 'wagmi';
 import {
   Address,
@@ -54,8 +53,8 @@ const TOKEN_CONFIG: Record<string, Record<string, { address: Address; decimals: 
     USDC: { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' as Address, decimals: 18 },
   },
   'Base Sepolia': {
-    USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as Address, decimals: 6 },
-    USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as Address, decimals: 6 },
+    USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as Address, decimals: 18 },
+    USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as Address, decimals: 18 },
   },
 };
 
@@ -86,7 +85,7 @@ export default function Home() {
   });
 
   const { address: user } = useAccount();
-  const { generateTransaction, payTransaction } = usePayNovaContract();
+  const { generateTransaction, payTransaction, approveTransaction } = usePayNovaContract();
   const client = usePublicClient();
 
   const CHAIN_MAP: Record<number, string> = {
@@ -171,28 +170,37 @@ export default function Home() {
     const toastId = toast.loading('Preparing payment…');
 
     try {
-      const hash = await payTransaction(refId, result.data.amount, result.data.token);
+      if(result.data.token !== '0x0000000000000000000000000000000000000000'){
+         await approveTransaction(result.data.amount, result.data.token)
 
-      toast.dismiss(toastId);
-      const confirmToast = toast.loading('Confirming payment…');
+      }     
 
-      const receipt = await client.waitForTransactionReceipt({ hash });
-      toast.dismiss(confirmToast);
+       const hash = await payTransaction(refId, result.data.amount, result.data.token);
+       
+  
+       toast.dismiss(toastId);
+       const confirmToast = toast.loading('Confirming payment…');
+  
+       const receipt = await client.waitForTransactionReceipt({ hash });
+       toast.dismiss(confirmToast);
+  
+       if (receipt.status === 'success') {
+         toast.success('Paid successfully!');
+         setShowRefModal(false);
+         setShowReceipt(true);
+         const updated = await fetchTx(refId);
+         if (updated) {
+           setTx(updated.data);
+           setSymbol(updated.sym);
+           setDecimals(updated.dec);
+         }
+     }
 
-      if (receipt.status === 'success') {
-        toast.success('Paid successfully!');
-        setShowRefModal(false);
-        setShowReceipt(true);
-        const updated = await fetchTx(refId);
-        if (updated) {
-          setTx(updated.data);
-          setSymbol(updated.sym);
-          setDecimals(updated.dec);
-        }
-      } else {
+      else {
         toast.error('Payment reverted');
       }
-    } catch (err) {
+    }
+     catch (err) {
       toast.dismiss(toastId);
       const e = err as { shortMessage?: string; message?: string };
       toast.error(e.shortMessage || e.message || 'Payment failed');
@@ -200,6 +208,8 @@ export default function Home() {
       setPaying(false);
     }
   };
+
+
 
   /* ────── GENERATE TRANSACTION ────── */
   const handleGenerate = async (e: React.FormEvent) => {

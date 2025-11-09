@@ -1,8 +1,7 @@
-// components/NavbarBalances.tsx
 'use client';
 
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
-import { formatUnits, encodeFunctionData } from 'viem';
+import { formatUnits } from 'viem';
 import erc20Abi from '@/context/ercabi.json';
 import toast from 'react-hot-toast';
 import { CurrencyDollarIcon } from '@heroicons/react/24/outline';
@@ -14,7 +13,7 @@ export default function NavbarBalances() {
 
   const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as `0x${string}`;
   const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as `0x${string}`;
-  const PAYNOVA_CONTRACT = process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as `0x${string}`;
+
 
   const { data: usdcRaw, isLoading: loadingUsdc } = useReadContract({
     address: USDC_ADDRESS,
