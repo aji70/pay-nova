@@ -61,6 +61,7 @@ const TOKEN_CONFIG: Record<string, Record<string, { address: Address; decimals: 
 export default function Home() {
   /* ────── STATE ────── */
   const [ref, setRef] = useState('');
+  const [currentRef, setCurrentRef] = useState(''); // Separate state for displaying the loaded ref
   const [loading, setLoading] = useState(false);
   const [paying, setPaying] = useState(false);
   const [tx, setTx] = useState<Transaction | null>(null);
@@ -74,6 +75,11 @@ export default function Home() {
   const [generatedChain, setGeneratedChain] = useState('');
   const [generatedSymbol, setGeneratedSymbol] = useState('');
   const [generatedDecimals, setGeneratedDecimals] = useState(18);
+
+  // Payment amount input state
+  const [paymentAmount, setPaymentAmount] = useState('');
+  // Paid amount for receipt
+  const [paidAmount, setPaidAmount] = useState('');
 
   // Generate form state
   const [genForm, setGenForm] = useState({
@@ -95,7 +101,7 @@ export default function Home() {
 
   /* ────── HELPERS ────── */
   const generateId = () => `ref_${Math.random().toString(36).substr(2, 9)}`;
-  const fmt = (amt: bigint, dec: number) => amt === 0n ? '0' : parseFloat(formatUnits(amt, dec)).toString();
+  const fmt = (amt: bigint, dec: number) => amt === 0n ? '0' : parseFloat(formatUnits(amt, dec)).toFixed(6).replace(/\.?0+$/, '');
 
   /* ────── FETCH TX ────── */
   const fetchTx = useCallback(async (refId: string): Promise<{
@@ -147,9 +153,12 @@ export default function Home() {
       setSymbol(result.sym);
       setDecimals(result.dec);
       setChain(result.chainName);
+      setCurrentRef(ref); // Set the displayed ref
+      // No auto-fill for payment amount
     } else {
       toast.error('Transaction not found');
       setTx(null);
+      setCurrentRef(''); // Clear if not found
     }
     setLoading(false);
   };
@@ -166,16 +175,25 @@ export default function Home() {
       return;
     }
 
+    const userAmount = paymentAmount.trim();
+    if (!userAmount || parseFloat(userAmount) <= 0) {
+      toast.error('Please enter a valid amount to pay');
+      setPaying(false);
+      return;
+    }
+
+    const payAmount = parseUnits(userAmount, decimals);
+
     // ---- TOAST FLOW (fixed) ----
     const toastId = toast.loading('Preparing payment…');
 
     try {
       if(result.data.token !== '0x0000000000000000000000000000000000000000'){
-         await approveTransaction(result.data.amount, result.data.token)
+         await approveTransaction(payAmount, result.data.token)
 
       }     
 
-       const hash = await payTransaction(refId, result.data.amount, result.data.token);
+       const hash = await payTransaction(refId, payAmount, result.data.token);
        
   
        toast.dismiss(toastId);
@@ -185,15 +203,20 @@ export default function Home() {
        toast.dismiss(confirmToast);
   
        if (receipt.status === 'success') {
+         // Set paid amount for receipt
+         setPaidAmount(userAmount);
          toast.success('Paid successfully!');
          setShowRefModal(false);
          setShowReceipt(true);
+         setCurrentRef(refId); // Ensure displayed ref is set
          const updated = await fetchTx(refId);
          if (updated) {
            setTx(updated.data);
            setSymbol(updated.sym);
            setDecimals(updated.dec);
+           setChain(updated.chainName);
          }
+         setPaymentAmount(''); // Clear input after success
      }
 
       else {
@@ -268,8 +291,10 @@ export default function Home() {
         setGeneratedChain(genForm.chain);
         setGeneratedSymbol(sym);
         setGeneratedDecimals(dec);
+        setCurrentRef(refId); // Set displayed ref for consistency
         setShowGenerateModal(false);
         setShowRefModal(true);
+        // No auto-fill for payment amount
       } else {
         toast.error('Transaction reverted');
       }
@@ -386,7 +411,7 @@ export default function Home() {
               <dl className="space-y-2">
                 <div className="flex justify-between border-b border-white/10 py-1">
                   <dt className="text-purple-200">Ref</dt>
-                  <dd className="bg-white/10 rounded px-2 font-mono text-white">{ref}</dd>
+                  <dd className="bg-white/10 rounded px-2 font-mono text-white">{currentRef || 'N/A'}</dd>
                 </div>
                 <div className="flex justify-between border-b border-white/10 py-1">
                   <dt className="flex items-center text-purple-200"><UserIcon className="mr-1 h-4 w-4" />From</dt>
@@ -399,10 +424,19 @@ export default function Home() {
                 <div className="flex justify-between rounded bg-blue-900/30 px-3 py-2">
                   <dt className="flex items-center font-semibold text-purple-200">
                     <CurrencyDollarIcon className="mr-1 h-4 w-4 text-blue-300" />
-                    Amount
+                    Original Amount
                   </dt>
                   <dd className="text-xl font-bold text-white">
                     {fmt(tx.amount, decimals)} <span className="text-purple-200">{symbol}</span>
+                  </dd>
+                </div>
+                <div className="flex justify-between rounded bg-yellow-900/30 px-3 py-2">
+                  <dt className="flex items-center font-semibold text-purple-200">
+                    <CurrencyDollarIcon className="mr-1 h-4 w-4 text-yellow-300" />
+                    Refunded
+                  </dt>
+                  <dd className="text-xl font-bold text-white">
+                    {fmt(tx.refunded, decimals)} <span className="text-purple-200">{symbol}</span>
                   </dd>
                 </div>
                 <div className="flex justify-between py-1">
@@ -411,11 +445,33 @@ export default function Home() {
                 </div>
               </dl>
 
+              {/* Payment Amount Input */}
+              {tx.status === 0 && (
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-purple-200 mb-2">
+                    Amount to Pay
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="any"
+                      value={paymentAmount}
+                      onChange={e => setPaymentAmount(e.target.value)}
+                      className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm text-white focus:border-transparent focus:ring-2 focus:ring-purple-500"
+                      disabled={paying}
+                    />
+                    <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-purple-300">
+                      {symbol}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Pay button */}
               {tx.status === 0 && tx.from === user && (
                 <button
                   onClick={() => pay(ref)}
-                  disabled={paying}
+                  disabled={paying || !paymentAmount.trim()}
                   className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-3 font-bold text-white shadow-lg transition hover:scale-[1.02] disabled:opacity-50"
                 >
                   {paying ? (
@@ -567,13 +623,33 @@ export default function Home() {
             </div>
 
             <div className="space-y-1 text-sm text-gray-600">
-              <p><strong>Amount:</strong> {genForm.amount} {generatedSymbol}</p>
+              <p><strong>Original Amount:</strong> {genForm.amount} {generatedSymbol}</p>
               <p><strong>Chain:</strong> {generatedChain}</p>
+            </div>
+
+            {/* Payment Amount Input in Ref Modal */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Amount to Pay
+              </label>
+              <div className="relative">
+                <input
+                  type="number"
+                  step="any"
+                  value={paymentAmount}
+                  onChange={e => setPaymentAmount(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-3 text-sm focus:ring-2 focus:ring-purple-500"
+                  disabled={paying}
+                />
+                <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-500">
+                  {generatedSymbol}
+                </span>
+              </div>
             </div>
 
             <button
               onClick={() => pay(generatedRef)}
-              disabled={paying}
+              disabled={paying || !paymentAmount.trim()}
               className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-600 to-emerald-600 py-3 font-bold text-white shadow-md hover:shadow-lg transform hover:scale-[1.02] transition-all disabled:opacity-70"
             >
               {paying ? (
@@ -597,10 +673,10 @@ export default function Home() {
       )}
 
       {/* ────── RECEIPT MODAL ────── */}
-      {showReceipt && tx && (
+      {showReceipt && tx && paidAmount && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm print:hidden" onClick={e => e.target === e.currentTarget && setShowReceipt(false)}>
-          <div className="max-w-2xl w-full overflow-y-auto rounded-3xl bg-white shadow-2xl print:max-w-none print:rounded-none print:shadow-none print:border-0">
-            <div className="space-y-6 p-8 print:p-12">
+          <div className="max-w-lg w-full overflow-y-auto rounded-3xl bg-white shadow-2xl print:max-w-none print:rounded-none print:shadow-none print:border-0">
+            <div className="space-y-6 p-6 print:p-12">
               <div className="hidden border-b-2 border-gray-900 pb-8 text-center print:block">
                 <h1 className="text-6xl font-bold text-gray-900">PayNova</h1>
                 <p className="mt-4 text-4xl font-semibold text-gray-700">Payment Receipt</p>
@@ -631,7 +707,7 @@ export default function Home() {
                       <span className="rounded-full bg-purple-100 px-2 py-1 text-xs font-semibold text-purple-600">REF</span>
                       Reference
                     </dt>
-                    <dd className="bg-gray-100 rounded px-3 py-1 font-bold text-gray-900">{ref}</dd>
+                    <dd className="bg-gray-100 rounded px-3 py-1 font-bold text-gray-900">{currentRef}</dd>
                   </div>
                   <div className="flex justify-between bg-green-50 px-6 py-4">
                     <dt className="flex items-center gap-2 font-semibold text-gray-700">
@@ -639,8 +715,18 @@ export default function Home() {
                       Paid
                     </dt>
                     <dd className="flex items-center gap-2 text-2xl font-bold text-gray-900">
-                      {fmt(tx.amount, decimals)}
+                      {paidAmount}
                       <span className="text-lg font-semibold text-green-600">{symbol}</span>
+                    </dd>
+                  </div>
+                  <div className="flex justify-between px-6 py-4 bg-yellow-50">
+                    <dt className="flex items-center gap-2 font-semibold text-gray-700">
+                      <CurrencyDollarIcon className="h-4 w-4 text-yellow-600" />
+                      Refunded
+                    </dt>
+                    <dd className="flex items-center gap-2 text-xl font-bold text-gray-900">
+                      {fmt(tx.refunded, decimals)}
+                      <span className="text-lg font-semibold text-yellow-600">{symbol}</span>
                     </dd>
                   </div>
                   <div className="flex justify-between px-6 py-4">
@@ -664,7 +750,12 @@ export default function Home() {
 
               <div className="flex flex-col gap-4 pt-4 sm:flex-row print:hidden">
                 <button
-                  onClick={() => { setShowReceipt(false); setTx(null); setRef(''); }}
+                  onClick={() => { 
+                    setShowReceipt(false); 
+                    setTx(null); 
+                    setCurrentRef(''); 
+                    setPaidAmount('');
+                  }}
                   className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gray-100 py-3 font-semibold text-gray-700 hover:bg-gray-200"
                 >
                   <XMarkIcon className="h-5 w-5" />
