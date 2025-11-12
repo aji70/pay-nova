@@ -197,15 +197,3 @@ paynova.app
 
 This project is MIT licensed — see the LICENSE
  file for details.
-
-## **🧑‍💻 Support**
-
-Issues: Report bugs or feature requests on GitHub
-
-Discord/Community: Join the Reown Community
- for WalletConnect support
-
-Contract Audit: It’s recommended to audit the PayNova smart contract before mainnet use.
-
-Built with ❤️ by the PayNova Team
-
