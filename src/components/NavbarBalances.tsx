@@ -84,7 +84,7 @@ export default function NavbarBalances() {
       </div>
 
       {/* Mint Buttons – Only visible on Base Sepolia */}
-      {client?.chain?.id === 84532 && (
+      {client?.chain?.id === 8453 && (
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => mint(USDC_ADDRESS, 'USDC')}
