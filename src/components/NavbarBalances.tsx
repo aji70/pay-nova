@@ -11,8 +11,8 @@ export default function NavbarBalances() {
   const client = usePublicClient();
   const { writeContractAsync, isPending } = useWriteContract();
 
-  const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as `0x${string}`;
-  const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as `0x${string}`;
+  const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BASE as `0x${string}`;
+  const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BASE as `0x${string}`;
 
 
   const { data: usdcRaw, isLoading: loadingUsdc } = useReadContract({

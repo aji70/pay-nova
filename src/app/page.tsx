@@ -53,8 +53,8 @@ const TOKEN_CONFIG: Record<string, Record<string, { address: Address; decimals: 
     USDC: { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' as Address, decimals: 18 },
   },
   'Base Sepolia': {
-    USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as Address, decimals: 18 },
-    USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as Address, decimals: 18 },
+    USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE as Address, decimals: 18 },
+    USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE as Address, decimals: 18 },
   },
 };
 
@@ -113,7 +113,7 @@ export default function Home() {
     if (!refId.trim() || !client) return null;
     try {
       const data = (await client.readContract({
-        address: process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address,
+        address: process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT_BASE as Address,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [refId.trim()],
