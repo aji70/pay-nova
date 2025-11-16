@@ -11,7 +11,7 @@ import { Address, Hash } from 'viem';
 import PayNovaABI from './abi.json';
 import erc20Abi from './ercabi.json';
 
-const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT as Address;
+const CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT_BASE as Address;
 
 export type TxStatus = 0 | 1 | 2;
 
