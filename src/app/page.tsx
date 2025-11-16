@@ -43,19 +43,47 @@ type Transaction = {
 
 type TokenType = 'Native' | 'USDT' | 'USDC' | 'Custom';
 
-const TOKEN_CONFIG: Record<string, Record<string, { address: Address; decimals: number }>> = {
-  Ethereum: {
-    USDT: { address: '0xdAC17F958D2ee523a2206206994597C13D831ec7' as Address, decimals: 6 },
-    USDC: { address: '0xA0b86a33E641E66e2aD2d4fC5E9B6b8C9e5D8b4f' as Address, decimals: 6 },
-  },
-  BSC: {
-    USDT: { address: '0x55d398326f99059fF775485246999027B3197955' as Address, decimals: 18 },
-    USDC: { address: '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d' as Address, decimals: 18 },
-  },
-  'Base Sepolia': {
-    USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE as Address, decimals: 18 },
-    USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE as Address, decimals: 18 },
-  },
+const CHAIN_MAP: Record<number, string> = {
+  84532: 'Base Sepolia',
+  8453: 'Base',
+  42220: 'Celo',
+};
+
+const getContractAddress = (chainId?: number): Address | undefined => {
+  if (!chainId) return undefined;
+
+  switch (chainId) {
+    case 84532: // Base Sepolia
+      return process.env.NEXT_PUBLIC_BASE_SEPOLIA_PAYNOVA_CONTRACT as Address;
+    case 8453: // Base mainnet
+      return process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT_BASE as Address;
+    case 42220: // Celo mainnet
+      return process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT_CELO as Address;
+    default:
+      return undefined;
+  }
+};
+
+const getTokenConfig = (chainName: string) => {
+  switch (chainName) {
+    case 'Base Sepolia':
+      return {
+        USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as Address, decimals: 18 },
+        USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as Address, decimals: 18 },
+      };
+    case 'Base':
+      return {
+        USDT: { address: process.env.NEXT_PUBLIC_USDT_BASE as Address, decimals: 18 },
+        USDC: { address: process.env.NEXT_PUBLIC_USDC_BASE as Address, decimals: 18 },
+      };
+    case 'Celo':
+      return {
+        USDT: { address: process.env.NEXT_PUBLIC_USDT_CELO as Address, decimals: 18 },
+        USDC: { address: process.env.NEXT_PUBLIC_USDC_CELO as Address, decimals: 18 },
+      };
+    default:
+      return {};
+  }
 };
 
 export default function Home() {
@@ -85,7 +113,6 @@ export default function Home() {
   const [genForm, setGenForm] = useState({
     recipient: '',
     amount: '',
-    chain: 'Base Sepolia' as string,
     tokenType: 'Native' as TokenType,
     tokenAddress: '',
   });
@@ -94,10 +121,10 @@ export default function Home() {
   const { generateTransaction, payTransaction, approveTransaction } = usePayNovaContract();
   const client = usePublicClient();
 
-  const CHAIN_MAP: Record<number, string> = {
-    1: 'Ethereum', 56: 'BSC', 137: 'Polygon', 42161: 'Arbitrum',
-    8453: 'Base', 43114: 'Avalanche', 10: 'Optimism', 84532: 'Base Sepolia',
-  };
+  const chainId = client?.chain?.id;
+  const chainName = chainId ? CHAIN_MAP[chainId] ?? 'Unknown' : 'Unknown';
+  const CONTRACT_ADDRESS = getContractAddress(chainId);
+  const nativeSymbol = chainName === 'Celo' ? 'CELO' : 'ETH';
 
   /* ────── HELPERS ────── */
   const generateId = () => `ref_${Math.random().toString(36).substr(2, 9)}`;
@@ -111,18 +138,23 @@ export default function Home() {
     chainName: string;
   } | null> => {
     if (!refId.trim() || !client) return null;
+
+    const currentChainId = client.chain?.id;
+    const currentContractAddress = getContractAddress(currentChainId);
+    if (!currentContractAddress) return null;
+
     try {
       const data = (await client.readContract({
-        address: process.env.NEXT_PUBLIC_PAYNOVA_CONTRACT_BASE as Address,
+        address: currentContractAddress,
         abi: PayNovaABI,
         functionName: 'getTransaction',
         args: [refId.trim()],
       })) as Transaction;
 
-      const chainId = await client.getChainId();
-      const chainName = CHAIN_MAP[chainId] ?? 'Unknown';
+      const currentChainName = currentChainId ? CHAIN_MAP[currentChainId] ?? 'Unknown' : 'Unknown';
+      const currentNativeSymbol = currentChainName === 'Celo' ? 'CELO' : 'ETH';
 
-      let sym = 'Native', dec = 18;
+      let sym = currentNativeSymbol, dec = 18;
       if (data.token !== zeroAddress) {
         try {
           const [d, s] = await Promise.all([
@@ -131,19 +163,23 @@ export default function Home() {
           ]);
           dec = d; sym = s || 'TOKEN';
         } catch { sym = 'CUSTOM'; }
-      } else {
-        sym = ['Ethereum', 'Base', 'Base Sepolia', 'Arbitrum', 'Optimism'].includes(chainName) ? 'ETH'
-          : chainName === 'BSC' ? 'BNB'
-          : chainName === 'Polygon' ? 'MATIC'
-          : chainName === 'Avalanche' ? 'AVAX'
-          : 'Native';
       }
 
-      return { data, sym, dec, chainName };
+      return { data, sym, dec, chainName: currentChainName };
     } catch {
       return null;
     }
   }, [client]);
+
+  if (!chainId || !CONTRACT_ADDRESS) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-white">
+        <p>Unsupported chain. Please switch to Base Sepolia, Base, or Celo.</p>
+      </div>
+    );
+  }
+
+  const tokens = getTokenConfig(chainName);
 
   const loadTx = async () => {
     setLoading(true);
@@ -182,13 +218,13 @@ export default function Home() {
       return;
     }
 
-    const payAmount = parseUnits(userAmount, decimals);
+    const payAmount = parseUnits(userAmount, result.dec);
 
     // ---- TOAST FLOW (fixed) ----
     const toastId = toast.loading('Preparing payment…');
 
     try {
-      if(result.data.token !== '0x0000000000000000000000000000000000000000'){
+      if(result.data.token !== zeroAddress){
          await approveTransaction(payAmount, result.data.token)
 
       }     
@@ -245,14 +281,10 @@ export default function Home() {
 
     let tokenAddr: Address = zeroAddress;
     let dec = 18;
-    let sym = 'ETH';
+    let sym = nativeSymbol;
 
     if (genForm.tokenType === 'Native') {
-      sym = ['Ethereum', 'Base', 'Base Sepolia', 'Arbitrum', 'Optimism'].includes(genForm.chain) ? 'ETH'
-        : genForm.chain === 'BSC' ? 'BNB'
-        : genForm.chain === 'Polygon' ? 'MATIC'
-        : genForm.chain === 'Avalanche' ? 'AVAX'
-        : 'ETH';
+      // sym already set
     } else if (isCustom && genForm.tokenAddress) {
       tokenAddr = genForm.tokenAddress as Address;
       try {
@@ -265,8 +297,11 @@ export default function Home() {
         sym = 'CUSTOM';
       }
     } else {
-      const cfg = TOKEN_CONFIG[genForm.chain]?.[genForm.tokenType];
-      if (!cfg) return toast.error('Unsupported chain/token');
+      if (genForm.tokenType !== 'USDT' && genForm.tokenType !== 'USDC') {
+        return toast.error(`Unsupported token ${genForm.tokenType}`);
+      }
+      const cfg = tokens[genForm.tokenType];
+      if (!cfg) return toast.error(`Unsupported token ${genForm.tokenType} on ${chainName}`);
       tokenAddr = cfg.address;
       dec = cfg.decimals;
       sym = genForm.tokenType;
@@ -288,7 +323,7 @@ export default function Home() {
       if (receipt.status === 'success') {
         toast.success('Transaction generated!');
         setGeneratedRef(refId);
-        setGeneratedChain(genForm.chain);
+        setGeneratedChain(chainName);
         setGeneratedSymbol(sym);
         setGeneratedDecimals(dec);
         setCurrentRef(refId); // Set displayed ref for consistency
@@ -511,26 +546,13 @@ export default function Home() {
 
             <form onSubmit={handleGenerate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Chain</label>
-                <select
-                  value={genForm.chain}
-                  onChange={e => setGenForm({ ...genForm, chain: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
-                >
-                  <option value="Base Sepolia">Base Sepolia</option>
-                  <option value="Ethereum">Ethereum</option>
-                  <option value="BSC">BSC</option>
-                </select>
-              </div>
-
-              <div>
                 <label className="block text-sm font-medium text-gray-700">Token</label>
                 <select
                   value={genForm.tokenType}
                   onChange={handleTokenTypeChange}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500"
                 >
-                  <option value="Native">Native Token</option>
+                  <option value="Native">Native Token ({nativeSymbol})</option>
                   <option value="USDT">USDT</option>
                   <option value="USDC">USDC</option>
                   <option value="Custom">Custom Token</option>

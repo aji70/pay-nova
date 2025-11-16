@@ -11,16 +11,35 @@ export default function NavbarBalances() {
   const client = usePublicClient();
   const { writeContractAsync, isPending } = useWriteContract();
 
-  const USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BASE as `0x${string}`;
-  const USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BASE as `0x${string}`;
+  const chainId = client?.chain?.id;
 
+  // Dynamically select token addresses based on chain ID
+  let USDC_ADDRESS: `0x${string}` | undefined;
+  let USDT_ADDRESS: `0x${string}` | undefined;
+
+  if (chainId === 84532) { // Base Sepolia
+    USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BASE_SEPOLIA as `0x${string}`;
+    USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BASE_SEPOLIA as `0x${string}`;
+  } else if (chainId === 8453) { // Base mainnet
+    USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BASE as `0x${string}`;
+    USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BASE as `0x${string}`;
+  } else if (chainId === 42220) { // Celo mainnet
+    USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_CELO as `0x${string}`;
+    USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_CELO as `0x${string}`;
+  } else if (chainId === 1) { // Ethereum mainnet
+    USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_ETHEREUM as `0x${string}`;
+    USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_ETHEREUM as `0x${string}`;
+  } else if (chainId === 56) { // BSC mainnet
+    USDC_ADDRESS = process.env.NEXT_PUBLIC_USDC_BSC as `0x${string}`;
+    USDT_ADDRESS = process.env.NEXT_PUBLIC_USDT_BSC as `0x${string}`;
+  }
 
   const { data: usdcRaw, isLoading: loadingUsdc } = useReadContract({
     address: USDC_ADDRESS,
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: [address!],
-    query: { enabled: isConnected && !!address },
+    query: { enabled: isConnected && !!address && !!USDC_ADDRESS },
   }) as { data: bigint | undefined; isLoading: boolean };
 
   const { data: usdtRaw, isLoading: loadingUsdt } = useReadContract({
@@ -28,10 +47,10 @@ export default function NavbarBalances() {
     abi: erc20Abi,
     functionName: 'balanceOf',
     args: [address!],
-    query: { enabled: isConnected && !!address },
+    query: { enabled: isConnected && !!address && !!USDT_ADDRESS },
   }) as { data: bigint | undefined; isLoading: boolean };
 
-  // ✅ Format by dividing balance by 10^18
+  // Format by dividing balance by 10^6 (USDC/USDT decimals)
   const format = (val: bigint | undefined) =>
     val ? parseFloat(formatUnits(val, 18)).toFixed(2) : '0.00';
 
@@ -60,7 +79,10 @@ export default function NavbarBalances() {
     }
   };
 
-  if (!isConnected || !address) return null;
+  // Show mint buttons on all chains
+  const isMintEnabled = true;
+
+  if (!isConnected || !address || (!USDC_ADDRESS && !USDT_ADDRESS)) return null;
 
   return (
     <div className="hidden md:flex items-center gap-3 text-xs text-white/80 font-medium">
@@ -83,11 +105,11 @@ export default function NavbarBalances() {
         )}
       </div>
 
-      {/* Mint Buttons – Only visible on Base Sepolia */}
-      {client?.chain?.id === 8453 && (
+      {/* Mint Buttons */}
+      {isMintEnabled && (
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => mint(USDC_ADDRESS, 'USDC')}
+            onClick={() => mint(USDC_ADDRESS!, 'USDC')}
             disabled={isPending}
             className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold transition-all ${
               isPending
@@ -105,7 +127,7 @@ export default function NavbarBalances() {
           </button>
 
           <button
-            onClick={() => mint(USDT_ADDRESS, 'USDT')}
+            onClick={() => mint(USDT_ADDRESS!, 'USDT')}
             disabled={isPending}
             className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold transition-all ${
               isPending
